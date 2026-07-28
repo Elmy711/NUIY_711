@@ -41,7 +41,6 @@ var (
 	usePipeline     bool = false
 	useKeepAlive    bool = true
 	verbose         bool = false
-	compactMode     bool = false // mode tampilan ringkas untuk HP
 
 	headersReferers []string = []string{
 		"http://www.google.com/?q=",
@@ -144,7 +143,6 @@ func main() {
 	flag.BoolVar(&useKeepAlive, "keep-alive", true, "Enable keep-alive connections")
 	flag.BoolVar(&useAll, "all", false, "Enable ALL features (ULTRA BRUTAL)")
 	flag.BoolVar(&verbose, "v", false, "Verbose output")
-	flag.BoolVar(&compactMode, "compact", false, "Compact output mode (for small screens)")
 
 	flag.Parse()
 
@@ -218,9 +216,6 @@ func main() {
 	fmt.Printf(" 💣 Threads: %d\n", threads)
 	fmt.Printf(" ⏱️  Duration: %ds\n", duration)
 	fmt.Printf(" 📦 Payload: %dMB\n", payloadSize)
-	if compactMode {
-		fmt.Println(" 📱 Compact mode: ON")
-	}
 	fmt.Printf(" 💎  Features:\n")
 	fmt.Printf("   ├─ HTTP/2 Rapid Reset: %v\n", useHTTP2)
 	fmt.Printf("   ├─ UDP Flood: %v\n", useUDP)
@@ -599,6 +594,7 @@ func generateReferers() {
 	}
 }
 
+// statsPrinter sekarang hanya menampilkan compact mode (tanpa bar)
 func statsPrinter(duration int) {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
@@ -626,19 +622,9 @@ func statsPrinter(duration int) {
 			}
 			remainingStr := formatDuration(int(remaining))
 
-			if compactMode {
-				// Mode compact: tanpa bar, hanya angka
-				fmt.Printf("\r ⏳%5.1f%% ✅%d ❌%d 📊%d 🚀%5.1f/s ⏱%s",
-					progress, success, failed, total, rate, remainingStr)
-			} else {
-				// Mode normal: bar pendek 20 karakter
-				barLen := 20
-				filled := int(progress / 100 * float64(barLen))
-				bar := strings.Repeat("█", filled) + strings.Repeat("░", barLen-filled)
-
-				fmt.Printf("\r [%s] %5.1f%% | ✅%d ❌%d 📊%d | 🚀%5.1f/s | ⏱%s",
-					bar, progress, success, failed, total, rate, remainingStr)
-			}
+			// Compact output: tanpa bar
+			fmt.Printf("\r ⏳%5.1f%% ✅%d ❌%d 📊%d 🚀%5.1f/s ⏱%s",
+				progress, success, failed, total, rate, remainingStr)
 		}
 	}
 }
