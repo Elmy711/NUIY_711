@@ -11,6 +11,8 @@ import threading
 import argparse
 import signal
 import urllib.parse
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 from collections import defaultdict
 
 try:
