@@ -205,6 +205,8 @@ def slowloris_attack(host):
                 pass
 
 def worker(target_url, host, data, headers, payload_size):
+    global use_tor  # <-- Perbaikan: global di awal fungsi
+
     session = requests.Session()
     session.verify = False
 
@@ -219,7 +221,6 @@ def worker(target_url, host, data, headers, payload_size):
         else:
             if verbose:
                 print(" [!] pysocks not installed. Tor disabled.")
-            global use_tor
             use_tor = False
     elif use_proxy and proxy_list:
         proxy_addr = get_proxy()
