@@ -351,13 +351,13 @@ def stats_printer(duration):
         remaining = max(0, duration - elapsed)
         remaining_str = format_duration(int(remaining))
 
-        sys.stdout.write(f"\r ⏳{progress:5.1f}% ✅{success} ❌{failed} 📊{total} 🚀{rate:5.1f}/s ⏱{remaining_str}")
+        sys.stdout.write(f"\r ⏳{progress:5.1f}% ✅ {success} ❌ {failed} 📊 {total} 🚀 {rate:5.1f}/s ⏰ {remaining_str}")
         sys.stdout.flush()
 
 # ================ BANNER ================
 def print_banner():
     banner = """
-    ════════════════════════════════════════════════════════════
+    ════════════════════════════════════════════════════════
             ░▒▓███████▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
             ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
             ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
@@ -365,8 +365,8 @@ def print_banner():
             ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░  ░▒▓█▓▒░     
             ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░  ░▒▓█▓▒░     
             ░▒▓█▓▒░░▒▓█▓▒░░▒▓██████▓▒░░▒▓█▓▒░  ░▒▓█▓▒░     
-    ════════════════════════════════════════════════════════════
-    ════════════════════════════════════════════════════════════
+    ════════════════════════════════════════════════════════
+    ════════════════════════════════════════════════════════
     """
     print(banner)
 
@@ -489,9 +489,9 @@ def main():
     print_banner()
     print(f" 🎯 Target: {args.target}")
     print(f" 💣 Threads: {args.threads}")
-    print(f" ⏱️  Duration: {args.duration}s")
+    print(f" ⏰  Duration: {args.duration}s")
     print(f" 📦 Payload: {args.payload_size}MB")
-    print(" 📱 Compact mode: ON (no progress bar)")
+    print("  💿 Compact mode: ON (no progress bar)")
     print(f" 💎  Features:")
     print(f"   ├─ HTTP/2 Rapid Reset: {use_http2}")
     print(f"   ├─ UDP Flood: {use_udp}")
