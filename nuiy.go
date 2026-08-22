@@ -623,7 +623,7 @@ func statsPrinter(duration int) {
 			remainingStr := formatDuration(int(remaining))
 
 			// Compact output: tanpa bar
-			fmt.Printf("\r ⏳%5.1f%% ✅%d ❌%d 📊%d 🚀%5.1f/s ⏱%s",
+			fmt.Printf("\r ⏳%5.1f%% ✅ %d ❌ %d 📊 %d 🚀 %5.1f/s ⏰ %s",
 				progress, success, failed, total, rate, remainingStr)
 		}
 	}
@@ -653,7 +653,7 @@ func printFinalStats() {
 	stats.mutex.RUnlock()
 
 	elapsed := time.Since(stats.startTime).Seconds()
-	fmt.Printf(" ⏱️ Duration: %.2f seconds\n", elapsed)
+	fmt.Printf(" ⏰ Duration: %.2f seconds\n", elapsed)
 	fmt.Printf(" 📊 Average Rate: %.2f req/s\n", float64(atomic.LoadUint64(&stats.total))/elapsed)
 	fmt.Printf("\n  🚀🚀🚀 done.....\n")
 }
