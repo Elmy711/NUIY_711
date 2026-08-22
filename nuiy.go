@@ -214,7 +214,7 @@ func main() {
 	printBanner()
 	fmt.Printf(" 🎯 Target: %s\n", site)
 	fmt.Printf(" 💣 Threads: %d\n", threads)
-	fmt.Printf(" ⏱️  Duration: %ds\n", duration)
+	fmt.Printf(" ⏰  Duration: %ds\n", duration)
 	fmt.Printf(" 📦 Payload: %dMB\n", payloadSize)
 	fmt.Printf(" 💎  Features:\n")
 	fmt.Printf("   ├─ HTTP/2 Rapid Reset: %v\n", useHTTP2)
